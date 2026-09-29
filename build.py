@@ -71,8 +71,12 @@ def process_json(addon, version, mcversion, forgeversion, ofversion):
         #json_obj["libraries"].append({"name":"net.minecraft:Minecraft:"+mc_version}) #Insert at end
         return json.dumps( _py2_json(json_obj), indent=1, separators=(', ', ': ') )
 
-# Installer.java needs -source 1.8: use MCP's JDK when it is JDK 8, otherwise the javac on PATH
+# The official installer program was compiled with JDK 11's javac (Installer.java) and
+# shipped org/json classes compiled by JDK 7 for Java 6. main() uses those JDKs when they
+# are installed so the installer is byte-identical too; Installer.java needs -source 1.8.
 javac_cmd = "javac"
+json_javac_cmd = None
+JSON_SOURCES = ["JSONObject", "JSONArray", "JSONException", "JSONString", "JSONTokener"]
 
 def create_install(mcp_dir):
     print("Creating Installer...")
@@ -136,6 +140,12 @@ def create_install(mcp_dir):
     replacelineinfile( installer_java_file, "private static String FORGE_VERSION",     "    private static String FORGE_VERSION     = \"%s\";\n" % forge_version );
 
     # Build installer.java
+    if json_javac_cmd:
+        print("Compiling org/json for Java 6...")
+        subprocess.Popen(
+            cmdsplit("%s -source 1.6 -target 1.6 %s" % (json_javac_cmd, " ".join("org/json/%s.java" % n for n in JSON_SOURCES))),
+                cwd=os.path.join(base_dir,"installer"),
+                bufsize=-1).communicate()
     print("Recompiling Installer.java...")
     subprocess.Popen( 
         cmdsplit("%s -source 1.8 -target 1.8 \"%s\"" % (javac_cmd, os.path.join(base_dir,installer_java_file))), 
@@ -236,9 +246,24 @@ def main(mcp_dir):
     from runtime.mcp import recompile_side, reobfuscate_side
     from runtime.commands import Commands, CLIENT
     commands = Commands(None, verify=True)
-    global javac_cmd
-    if commands.javaversion.startswith('1.8'):
+    global javac_cmd, json_javac_cmd
+    jdk11 = jdk7 = None
+    for bindir in commands.findjdks():
+        version = commands.javacversion(bindir)
+        if version.startswith('11.') and jdk11 is None:
+            jdk11 = bindir
+        if version.startswith('1.7') and jdk7 is None:
+            jdk7 = bindir
+    if jdk11:
+        javac_cmd = '"%s"' % os.path.join(jdk11, 'javac')
+    elif commands.javaversion.startswith('1.8'):
         javac_cmd = commands.cmdjavac
+    if jdk7:
+        json_javac_cmd = '"%s"' % os.path.join(jdk7, 'javac')
+    print('Installer.java: %s | org/json: %s' % (javac_cmd, json_javac_cmd or 'with Installer.java'))
+    if not jdk11 or not jdk7:
+        print('!! The installer program will not be byte-identical to official builds: they compiled'
+              ' Installer.java with JDK 11 and org/json with JDK 7 (Java 6 target). !!')
     recompile_side( commands, CLIENT)
 
     print("Reobfuscating...")
