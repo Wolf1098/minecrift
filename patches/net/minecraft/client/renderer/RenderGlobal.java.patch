@@ -1,27 +1,21 @@
 --- a/net/minecraft/client/renderer/RenderGlobal.java
 +++ b/net/minecraft/client/renderer/RenderGlobal.java
-@@ -96,6 +96,20 @@
+@@ -95,6 +95,14 @@
+ import org.lwjgl.opengl.ARBOcclusionQuery;
  import org.lwjgl.opengl.GL11;
- import org.lwjgl.opengl.GL15;
  
 +import com.mtbs3d.minecrift.provider.MCOpenVR;
 +import com.mtbs3d.minecrift.render.RenderVRPlayer;
 +import com.mtbs3d.minecrift.settings.VRSettings;
 +import de.fruitfly.ovr.enums.EyeType;
 +import net.minecraft.client.Minecraft.renderPass;
-+import org.apache.logging.log4j.LogManager;
-+import org.apache.logging.log4j.Logger;
-+import org.lwjgl.BufferUtils;
-+import org.lwjgl.input.Mouse;
-+import org.lwjgl.opengl.ARBOcclusionQuery;
-+import org.lwjgl.opengl.GL11;
 +
 +
 +
  public class RenderGlobal implements IWorldAccess
  {
      private static final Logger logger = LogManager.getLogger();
-@@ -110,7 +124,9 @@
+@@ -109,7 +117,9 @@
      public final TextureManager renderEngine;
      public CompactArrayList worldRenderersToUpdate = new CompactArrayList(100, 0.8F);
      private WorldRenderer[] sortedWorldRenderers;
@@ -32,7 +26,7 @@
      private int renderChunksWide;
      private int renderChunksTall;
      private int renderChunksDeep;
-@@ -267,6 +283,10 @@
+@@ -266,6 +276,10 @@
      private long lastActionTime = System.currentTimeMillis();
      private static AxisAlignedBB AABB_INFINITE = AxisAlignedBB.getBoundingBox(Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
  
@@ -43,7 +37,7 @@
      public RenderGlobal(Minecraft par1Minecraft)
      {
          this.glListClouds = GLAllocation.generateDisplayLists(1);
-@@ -291,17 +311,25 @@
+@@ -290,17 +304,25 @@
              ARBOcclusionQuery.glGenQueriesARB(this.glOcclusionQueryBase);
          }
  
@@ -70,7 +64,7 @@
          float var5 = 16.0F;
          int var8;
          int var9;
-@@ -551,7 +579,7 @@
+@@ -550,7 +572,7 @@
      /**
       * Renders all entities within range and within the frustrum. Args: pos, frustrum, partialTickTime
       */
@@ -79,7 +73,7 @@
      {
          int pass = 0;
  
-@@ -574,12 +602,12 @@
+@@ -573,12 +595,12 @@
          }
          else
          {
@@ -97,7 +91,7 @@
  
              if (pass == 0)
              {
-@@ -588,9 +616,9 @@
+@@ -587,9 +609,9 @@
                  this.countEntitiesHidden = 0;
                  this.countTileEntitiesRendered = 0;
                  EntityLivingBase var17 = this.mc.renderViewEntity;
@@ -110,7 +104,7 @@
                  TileEntityRendererDispatcher.staticPlayerX = var18;
                  TileEntityRendererDispatcher.staticPlayerY = oldFancyGraphics;
                  TileEntityRendererDispatcher.staticPlayerZ = aabb;
-@@ -614,7 +642,7 @@
+@@ -613,7 +635,7 @@
                  RenderManager.renderPosZ = aabb;
              }
  
@@ -119,7 +113,7 @@
              this.theWorld.theProfiler.endStartSection("global");
              List var24 = this.theWorld.getLoadedEntityList();
  
-@@ -641,15 +669,23 @@
+@@ -640,15 +662,23 @@
  
                      if (var19.isInRangeToRender3d(var4, var6, var8))
                      {
@@ -145,7 +139,7 @@
              for (var25 = 0; var25 < var24.size(); ++var25)
              {
                  var19 = (Entity)var24.get(var25);
-@@ -669,24 +705,51 @@
+@@ -668,24 +698,51 @@
                          }
                      }
  
@@ -200,7 +194,7 @@
              RenderHelper.enableStandardItemLighting();
  
              for (var25 = 0; var25 < this.tileEntities.size(); ++var25)
-@@ -710,7 +773,7 @@
+@@ -709,7 +766,7 @@
                              {
                                  FontRenderer fr = TileEntityRendererDispatcher.instance.getFontRenderer();
                                  fr.enabled = false;
@@ -209,7 +203,7 @@
                                  ++this.countTileEntitiesRendered;
                                  fr.enabled = true;
                                  continue;
-@@ -727,14 +790,54 @@
+@@ -726,14 +783,54 @@
                              }
                          }
  
@@ -228,8 +222,7 @@
 +            /** MINECRIFT */ // Render crosshair...
 +         //   if (!Reflector.forgeExists())
 +                this.mc.entityRenderer.disableLightmap((double)nano);
- 
--            this.mc.entityRenderer.disableLightmap((double)p_147589_3_);
++
 +            this.mc.entityRenderer.renderCrosshairAtDepth(nano);
 +
 +          //  if (!Reflector.forgeExists())
@@ -258,7 +251,8 @@
 +                
 +            /** END MINECRIFT SHADERS MOD **/
 +            /** END MINECRIFT */
-+
+ 
+-            this.mc.entityRenderer.disableLightmap((double)p_147589_3_);
 +            this.mc.entityRenderer.disableLightmap((double)nano);
              this.theWorld.theProfiler.endSection();
 +            
@@ -266,7 +260,7 @@
          }
      }
  
-@@ -1024,7 +1127,9 @@
+@@ -1023,7 +1120,9 @@
  
          if (this.mc.gameSettings.ofSmoothFps && renderPass == 0)
          {
@@ -277,7 +271,7 @@
          }
  
          byte var35 = 0;
-@@ -1081,10 +1186,23 @@
+@@ -1080,10 +1179,23 @@
                  GL11.glDisable(GL11.GL_LIGHTING);
                  GL11.glDisable(GL11.GL_ALPHA_TEST);
                  GL11.glDisable(GL11.GL_FOG);
@@ -303,7 +297,7 @@
                  profiler.endSection();
                  GL11.glPushMatrix();
                  float sumTX = 0.0F;
-@@ -1183,7 +1301,16 @@
+@@ -1182,7 +1294,16 @@
                  GL11.glEnable(GL11.GL_TEXTURE_2D);
                  GL11.glEnable(GL11.GL_ALPHA_TEST);
                  GL11.glEnable(GL11.GL_FOG);
@@ -320,7 +314,7 @@
              }
          }
          else
-@@ -1423,13 +1550,13 @@
+@@ -1422,13 +1543,13 @@
  
              this.glListBuffer.flip();
              EntityLivingBase var18 = this.mc.renderViewEntity;
@@ -337,7 +331,7 @@
              this.mc.entityRenderer.disableLightmap(partialTicks);
              return l;
          }
-@@ -1476,7 +1603,11 @@
+@@ -1475,7 +1596,11 @@
       */
      public void renderSky(float par1)
      {
@@ -350,7 +344,7 @@
          {
              WorldProvider var2 = this.mc.theWorld.provider;
              Object var3 = Reflector.call(var2, Reflector.ForgeWorldProvider_getSkyRenderer, new Object[0]);
-@@ -1488,7 +1619,7 @@
+@@ -1487,7 +1612,7 @@
              }
          }
  
@@ -359,7 +353,7 @@
          {
              if (!Config.isSkyEnabled())
              {
-@@ -1496,6 +1627,10 @@
+@@ -1495,6 +1620,10 @@
              }
  
              GL11.glDisable(GL11.GL_FOG);
@@ -370,7 +364,7 @@
              GL11.glDisable(GL11.GL_ALPHA_TEST);
              GL11.glEnable(GL11.GL_BLEND);
              OpenGlHelper.glBlendFunc(770, 771, 1, 0);
-@@ -1545,13 +1680,24 @@
+@@ -1544,13 +1673,24 @@
  
              GL11.glDepthMask(true);
              GL11.glEnable(GL11.GL_TEXTURE_2D);
@@ -396,7 +390,7 @@
              float var231 = (float)var21.xCoord;
              float var4 = (float)var21.yCoord;
              float var5 = (float)var21.zCoord;
-@@ -1571,14 +1717,32 @@
+@@ -1570,14 +1710,32 @@
              Tessellator var241 = Tessellator.instance;
              GL11.glDepthMask(false);
              GL11.glEnable(GL11.GL_FOG);
@@ -429,7 +423,7 @@
              GL11.glDisable(GL11.GL_ALPHA_TEST);
              GL11.glEnable(GL11.GL_BLEND);
              OpenGlHelper.glBlendFunc(770, 771, 1, 0);
-@@ -1596,6 +1760,9 @@
+@@ -1595,6 +1753,9 @@
              if (var251 != null && Config.isSunMoonEnabled())
              {
                  GL11.glDisable(GL11.GL_TEXTURE_2D);
@@ -439,7 +433,7 @@
                  GL11.glShadeModel(GL11.GL_SMOOTH);
                  GL11.glPushMatrix();
                  GL11.glRotatef(90.0F, 1.0F, 0.0F, 0.0F);
-@@ -1635,27 +1802,40 @@
+@@ -1634,27 +1795,40 @@
              }
  
              GL11.glEnable(GL11.GL_TEXTURE_2D);
@@ -489,7 +483,7 @@
                  var241.draw();
                  var12 = 20.0F;
                  this.renderEngine.bindTexture(locationMoonPhasesPng);
-@@ -1667,14 +1847,17 @@
+@@ -1666,14 +1840,17 @@
                  float var18 = (float)(var27 + 1) / 4.0F;
                  float var19 = (float)(var30 + 1) / 2.0F;
                  var241.startDrawingQuads();
@@ -511,7 +505,7 @@
              var20 = this.theWorld.getStarBrightness(par1) * var8;
  
              if (var20 > 0.0F && Config.isStarsEnabled() && !CustomSky.hasSkyLayers(this.theWorld))
-@@ -1687,20 +1870,31 @@
+@@ -1686,20 +1863,31 @@
              GL11.glDisable(GL11.GL_BLEND);
              GL11.glEnable(GL11.GL_ALPHA_TEST);
              GL11.glEnable(GL11.GL_FOG);
@@ -546,7 +540,7 @@
                  var241.startDrawingQuads();
                  var241.setColorRGBA_I(0, 255);
                  var241.addVertex((double)(-var10), (double)var11, (double)var10);
-@@ -1750,7 +1944,15 @@
+@@ -1749,7 +1937,15 @@
  
              GL11.glPopMatrix();
              GL11.glEnable(GL11.GL_TEXTURE_2D);
@@ -562,7 +556,7 @@
          }
      }
  
-@@ -1782,6 +1984,7 @@
+@@ -1781,6 +1977,7 @@
                      par1 = 0.0F;
                      GL11.glDisable(GL11.GL_CULL_FACE);
                      float var21 = (float)(this.mc.renderViewEntity.lastTickPosY + (this.mc.renderViewEntity.posY - this.mc.renderViewEntity.lastTickPosY) * (double)par1);
@@ -570,7 +564,7 @@
                      byte var3 = 32;
                      int var4 = 256 / var3;
                      Tessellator var5 = Tessellator.instance;
-@@ -1789,7 +1992,7 @@
+@@ -1788,7 +1985,7 @@
                      GL11.glEnable(GL11.GL_BLEND);
                      OpenGlHelper.glBlendFunc(770, 771, 1, 0);
                      double dc;
@@ -579,7 +573,7 @@
  
                      if (this.isFancyGlListClouds || this.cloudTickCounter >= this.cloudTickCounterGlList + 20)
                      {
-@@ -1811,8 +2014,8 @@
+@@ -1810,8 +2007,8 @@
                          }
  
                          var10 = 4.8828125E-4F;
@@ -590,7 +584,7 @@
                          double cdx = this.mc.renderViewEntity.prevPosZ + (this.mc.renderViewEntity.posZ - this.mc.renderViewEntity.prevPosZ) * (double)par1;
                          int cdz = MathHelper.floor_double(dc / 2048.0D);
                          int var18 = MathHelper.floor_double(cdx / 2048.0D);
-@@ -1840,16 +2043,17 @@
+@@ -1839,16 +2036,17 @@
                          GL11.glEndList();
                          this.isFancyGlListClouds = false;
                          this.cloudTickCounterGlList = this.cloudTickCounter;
@@ -612,7 +606,7 @@
                      float cdx1 = (float)(exactPlayerX1 - this.cloudPlayerX + dc * 0.03D);
                      float cdy = (float)(exactPlayerY1 - this.cloudPlayerY);
                      float cdz1 = (float)(exactPlayerZ1 - this.cloudPlayerZ);
-@@ -1880,7 +2084,9 @@
+@@ -1879,7 +2077,9 @@
          float partialTicks = par1;
          par1 = 0.0F;
          GL11.glDisable(GL11.GL_CULL_FACE);
@@ -623,7 +617,7 @@
          Tessellator var3 = Tessellator.instance;
          float var4 = 12.0F;
          float var5 = 4.0F;
-@@ -1901,29 +2107,29 @@
+@@ -1900,29 +2100,29 @@
          if (!this.isFancyGlListClouds || this.cloudTickCounter >= this.cloudTickCounterGlList + 20)
          {
              GL11.glNewList(this.glListClouds, GL11.GL_COMPILE);
@@ -671,7 +665,7 @@
              float dc = (float)(var8 - (double)MathHelper.floor_double(var8));
              float var23 = (float)(var10 - (double)MathHelper.floor_double(var10));
              byte cdx = 8;
-@@ -1965,25 +2171,25 @@
+@@ -1964,25 +2164,25 @@
  
                          if (var12 > -var5 - 1.0F)
                          {
@@ -708,7 +702,7 @@
                          int var34;
  
                          if (var28 > -1)
-@@ -1992,10 +2198,10 @@
+@@ -1991,10 +2191,10 @@
  
                              for (var34 = 0; var34 < cdx; ++var34)
                              {
@@ -723,7 +717,7 @@
                              }
                          }
  
-@@ -2005,14 +2211,14 @@
+@@ -2004,14 +2204,14 @@
  
                              for (var34 = 0; var34 < cdx; ++var34)
                              {
@@ -743,7 +737,7 @@
  
                          if (var29 > -1)
                          {
-@@ -2020,10 +2226,10 @@
+@@ -2019,10 +2219,10 @@
  
                              for (var34 = 0; var34 < cdx; ++var34)
                              {
@@ -758,7 +752,7 @@
                              }
                          }
  
-@@ -2033,10 +2239,10 @@
+@@ -2032,10 +2232,10 @@
  
                              for (var34 = 0; var34 < cdx; ++var34)
                              {
@@ -773,7 +767,7 @@
                              }
                          }
  
-@@ -2048,15 +2254,18 @@
+@@ -2047,15 +2247,18 @@
              GL11.glEndList();
              this.isFancyGlListClouds = true;
              this.cloudTickCounterGlList = this.cloudTickCounter;
@@ -799,7 +793,7 @@
          double var40 = (double)((float)(this.cloudTickCounter - this.cloudTickCounterGlList) + partialTicks);
          float var41 = (float)(var37 - this.cloudPlayerX + var40 * 0.03D);
          float var42 = (float)(var38 - this.cloudPlayerY);
-@@ -2076,7 +2285,9 @@
+@@ -2075,7 +2278,9 @@
      {
          this.renderViewEntity = entityliving;
  
@@ -810,7 +804,7 @@
          {
              return WrUpdates.updateRenderers(this, entityliving, flag);
          }
-@@ -2094,7 +2305,7 @@
+@@ -2093,7 +2298,7 @@
                  maxNum *= 3;
              }
  
@@ -819,7 +813,7 @@
              int numValid = 0;
              WorldRenderer wrBest = null;
              float distSqBest = Float.MAX_VALUE;
-@@ -2130,6 +2341,7 @@
+@@ -2129,6 +2334,7 @@
                                  break;
                              }
  
@@ -827,7 +821,7 @@
                              if (!i.isInFrustum)
                              {
                                  wr *= (float)NOT_IN_FRUSTRUM_MUL;
-@@ -2168,6 +2380,7 @@
+@@ -2167,6 +2373,7 @@
                      {
                          float distSq = var17.distanceToEntitySquared(entityliving);
  
@@ -835,7 +829,7 @@
                          if (!var17.isInFrustum)
                          {
                              distSq *= (float)NOT_IN_FRUSTRUM_MUL;
-@@ -2203,6 +2416,8 @@
+@@ -2202,6 +2409,8 @@
  
      public void drawBlockDamageTexture(Tessellator par1Tessellator, EntityLivingBase par2EntityPlayer, float par3)
      {
@@ -844,7 +838,7 @@
          double var4 = par2EntityPlayer.lastTickPosX + (par2EntityPlayer.posX - par2EntityPlayer.lastTickPosX) * (double)par3;
          double var6 = par2EntityPlayer.lastTickPosY + (par2EntityPlayer.posY - par2EntityPlayer.lastTickPosY) * (double)par3;
          double var8 = par2EntityPlayer.lastTickPosZ + (par2EntityPlayer.posZ - par2EntityPlayer.lastTickPosZ) * (double)par3;
-@@ -2217,6 +2432,10 @@
+@@ -2216,6 +2425,10 @@
              GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
              GL11.glAlphaFunc(GL11.GL_GREATER, 0.1F);
              GL11.glEnable(GL11.GL_ALPHA_TEST);
@@ -855,7 +849,7 @@
              par1Tessellator.startDrawingQuads();
              par1Tessellator.setTranslation(-var4, -var6, -var8);
              par1Tessellator.disableColor();
-@@ -2246,6 +2465,10 @@
+@@ -2245,6 +2458,10 @@
  
              par1Tessellator.draw();
              par1Tessellator.setTranslation(0.0D, 0.0D, 0.0D);
@@ -866,7 +860,7 @@
              GL11.glDisable(GL11.GL_ALPHA_TEST);
              GL11.glPolygonOffset(0.0F, 0.0F);
              GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
-@@ -2253,6 +2476,7 @@
+@@ -2252,6 +2469,7 @@
              GL11.glDepthMask(true);
              GL11.glPopMatrix();
          }
@@ -874,7 +868,7 @@
      }
  
      /**
-@@ -2260,6 +2484,8 @@
+@@ -2259,6 +2477,8 @@
       */
      public void drawSelectionBox(EntityPlayer par1EntityPlayer, MovingObjectPosition par2MovingObjectPosition, int par3, float par4)
      {
@@ -883,7 +877,7 @@
          if (par3 == 0 && par2MovingObjectPosition.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK)
          {
              GL11.glEnable(GL11.GL_BLEND);
-@@ -2267,6 +2493,10 @@
+@@ -2266,6 +2486,10 @@
              GL11.glColor4f(0.0F, 0.0F, 0.0F, 0.4F);
              GL11.glLineWidth(2.0F);
              GL11.glDisable(GL11.GL_TEXTURE_2D);
@@ -894,7 +888,7 @@
              GL11.glDepthMask(false);
              float var5 = 0.002F;
              Block var6 = this.theWorld.getBlock(par2MovingObjectPosition.blockX, par2MovingObjectPosition.blockY, par2MovingObjectPosition.blockZ);
-@@ -2282,8 +2512,13 @@
+@@ -2281,8 +2505,13 @@
  
              GL11.glDepthMask(true);
              GL11.glEnable(GL11.GL_TEXTURE_2D);
@@ -908,7 +902,7 @@
      }
  
      /**
-@@ -3027,10 +3262,11 @@
+@@ -3026,10 +3255,11 @@
  
              case 2001:
                  var8 = Block.getBlockById(par6 & 4095);
@@ -921,7 +915,7 @@
                  }
  
                  this.mc.effectRenderer.addBlockDestroyEffects(par3, par4, par5, var8, par6 >> 12 & 255);
-@@ -3129,6 +3365,9 @@
+@@ -3128,6 +3358,9 @@
  
                      for (int var24 = 0; var24 < var23; ++var24)
                      {
