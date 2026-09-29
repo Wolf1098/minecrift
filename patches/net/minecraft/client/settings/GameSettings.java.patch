@@ -1,11 +1,10 @@
 --- a/net/minecraft/client/settings/GameSettings.java
 +++ b/net/minecraft/client/settings/GameSettings.java
-@@ -2,17 +2,20 @@
+@@ -2,11 +2,9 @@
  
  import com.google.common.collect.Maps;
  import com.google.gson.Gson;
 -import java.io.BufferedReader;
-+
  import java.io.File;
  import java.io.FileReader;
  import java.io.FileWriter;
@@ -13,24 +12,19 @@
  import java.lang.reflect.ParameterizedType;
  import java.lang.reflect.Type;
  import java.util.ArrayList;
- import java.util.Arrays;
- import java.util.List;
- import java.util.Map;
-+
+@@ -42,6 +40,12 @@
+ import org.lwjgl.input.Mouse;
+ import org.lwjgl.opengl.Display;
+ 
 +import com.mtbs3d.minecrift.settings.profile.ProfileManager;
 +import com.mtbs3d.minecrift.settings.profile.ProfileReader;
 +import com.mtbs3d.minecrift.settings.profile.ProfileWriter;
- import net.minecraft.client.Minecraft;
- import net.minecraft.client.audio.SoundCategory;
- import net.minecraft.client.gui.GuiNewChat;
-@@ -38,6 +41,7 @@
- import org.apache.commons.lang3.ArrayUtils;
- import org.apache.logging.log4j.LogManager;
- import org.apache.logging.log4j.Logger;
 +import org.json.JSONObject;
- import org.lwjgl.input.Keyboard;
- import org.lwjgl.input.Mouse;
- import org.lwjgl.opengl.Display;
++
++
+ public class GameSettings
+ {
+     private static final Logger logger = LogManager.getLogger();
 @@ -75,12 +79,14 @@
      public boolean invertMouse;
      public int renderDistanceChunks = -1;
@@ -201,7 +195,7 @@
 -
 -            Config.updateFramebufferSize();
 -            this.mc.renderGlobal.loadRenderers();
-+        	//Vivecraft no no
++            //Vivecraft no no
 +            this.ofFastRender = false;
 +            //End vivecraft
          }
@@ -212,7 +206,7 @@
          if (par1EnumOptions == GameSettings.Options.ANAGLYPH)
          {
 -            this.anaglyph = !this.anaglyph;
-+        	//VIVE NOPE
++            //VIVE NOPE
 +            this.anaglyph = false;
 +            //NOPE
              this.mc.refreshResources();
@@ -223,12 +217,11 @@
          if (par1EnumOptions == GameSettings.Options.ENABLE_VSYNC)
          {
 -            this.enableVsync = !this.enableVsync;
--            Display.setVSyncEnabled(this.enableVsync);
 +            /** MINECRIFT **/
 +            this.enableVsync = false;
-+			// Don't update Vsync - need to be off
-+            Display.setVSyncEnabled(this.enableVsync); 
-+			/** END MINECRIFT */
++            // Don't update Vsync - need to be off
+             Display.setVSyncEnabled(this.enableVsync);
++            /** END MINECRIFT */
          }
  
          this.saveOptions();
@@ -424,15 +417,10 @@
          this.ofChunkLoading = 0;
          this.ofChunkUpdatesDynamic = false;
          this.ofTime = 0;
-@@ -2966,17 +2960,39 @@
+@@ -2966,16 +2960,38 @@
          this.ofAnimatedTerrain = true;
          this.ofAnimatedItems = true;
          this.ofAnimatedTextures = true;
--        this.mc.renderGlobal.updateCapes();
--        this.updateWaterOpacity();
--        this.mc.renderGlobal.setAllRenderersVisible();
--        this.mc.refreshResources();
--        this.saveOptions();
 +
 +        /** MINECRIFT **/
 +
@@ -449,10 +437,11 @@
 +        this.ofFastRender = false;      // Not convinced this was helping with this ON, and other stuff breaks!
 +
 +        if (this.mc.renderGlobal != null) {
-+            this.mc.renderGlobal.updateCapes();
-+            this.updateWaterOpacity();
-+            this.mc.renderGlobal.setAllRenderersVisible();
-+            this.mc.refreshResources();
+         this.mc.renderGlobal.updateCapes();
+         this.updateWaterOpacity();
+         this.mc.renderGlobal.setAllRenderersVisible();
+         this.mc.refreshResources();
+-        this.saveOptions();
 +        }
 +        if (save) {
 +            this.saveOptions(theProfile);
@@ -463,39 +452,9 @@
      public void updateVSync()
      {
 -        Display.setVSyncEnabled(this.enableVsync);
--    }
-+		/** MINECRIFT */ // Always needs to be off
++        /** MINECRIFT */ // Always needs to be off
 +        Display.setVSyncEnabled(false);
-+		/** END MINECRIFT */
-+	}
++        /** END MINECRIFT */
+     }
  
      private void updateWaterOpacity()
-     {
-@@ -3181,12 +3197,12 @@
-             return null;
-         }
- 
--        private Options(String p_i46438_1_, int p_i46438_2_, String par1Str, int par2, String par3Str, boolean par4, boolean par5)
-+        private Options(String p_i46429_1_, int p_i46429_2_, String par1Str, int par2, String par3Str, boolean par4, boolean par5)
-         {
--            this(p_i46438_1_, p_i46438_2_, par1Str, par2, par3Str, par4, par5, 0.0F, 1.0F, 0.0F);
-+            this(p_i46429_1_, p_i46429_2_, par1Str, par2, par3Str, par4, par5, 0.0F, 1.0F, 0.0F);
-         }
- 
--        private Options(String p_i46439_1_, int p_i46439_2_, String p_i45004_1_, int p_i45004_2_, String p_i45004_3_, boolean p_i45004_4_, boolean p_i45004_5_, float p_i45004_6_, float p_i45004_7_, float p_i45004_8_)
-+        private Options(String p_i46430_1_, int p_i46430_2_, String p_i45004_1_, int p_i45004_2_, String p_i45004_3_, boolean p_i45004_4_, boolean p_i45004_5_, float p_i45004_6_, float p_i45004_7_, float p_i45004_8_)
-         {
-             this.enumString = p_i45004_3_;
-             this.enumFloat = p_i45004_4_;
-@@ -3252,9 +3268,9 @@
-             return p_148264_1_;
-         }
- 
--        private Options(String p_i46440_1_, int p_i46440_2_, String p_i45005_1_, int p_i45005_2_, String p_i45005_3_, boolean p_i45005_4_, boolean p_i45005_5_, float p_i45005_6_, float p_i45005_7_, float p_i45005_8_, Object p_i45005_9_)
-+        private Options(String p_i46431_1_, int p_i46431_2_, String p_i45005_1_, int p_i45005_2_, String p_i45005_3_, boolean p_i45005_4_, boolean p_i45005_5_, float p_i45005_6_, float p_i45005_7_, float p_i45005_8_, Object p_i45005_9_)
-         {
--            this(p_i46440_1_, p_i46440_2_, p_i45005_1_, p_i45005_2_, p_i45005_3_, p_i45005_4_, p_i45005_5_, p_i45005_6_, p_i45005_7_, p_i45005_8_);
-+            this(p_i46431_1_, p_i46431_2_, p_i45005_1_, p_i45005_2_, p_i45005_3_, p_i45005_4_, p_i45005_5_, p_i45005_6_, p_i45005_7_, p_i45005_8_);
-         }
- 
-         Options(String x0, int x1, String x2, int x3, String x4, boolean x5, boolean x6, float x7, float x8, float x9, Object x10, Object x11)
