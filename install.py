@@ -158,15 +158,14 @@ def installAndPatchMcp( mcp_dir ):
         print("Patching fffix.py. Ignore \"FAILED\" hunks")
         apply_patch( mcp_dir, os.path.join("mcppatches", "fffix.py.patch"), os.path.join(mcp_dir,"runtime","pylibs"))
 
-    # Use Python 3 compatible MCP scripts
-    mcp_py3_dir = os.path.join(base_dir, "mcppatches", mcp_version + "-py3")
-    if os.path.exists(mcp_py3_dir):
-        print('Updating MCP scripts for Python 3: copying %s to %s' % (mcp_py3_dir, mcp_dir))
-        for src_dir, _, files in os.walk(mcp_py3_dir):
-            dst_dir = os.path.join(mcp_dir, os.path.relpath(src_dir, mcp_py3_dir))
-            mkdir_p(dst_dir)
-            for f in files:
-                shutil.copy(os.path.join(src_dir, f), dst_dir)
+    # Port MCP's own scripts to Python 3
+    mcp_py3_patch = os.path.join(base_dir, "mcppatches", mcp_version + "-py3.patch")
+    if os.path.exists(mcp_py3_patch):
+        print('Patching MCP scripts for Python 3: %s' % mcp_py3_patch)
+        failed = apply_source_patch(mcp_py3_patch, mcp_dir)
+        if failed:
+            print("ERROR: %s does not apply to this MCP (%s); extract a fresh %s.zip" % (mcp_py3_patch, ", ".join(failed), mcp_version))
+            sys.exit(1)
 
     # Use fixed fernflower.jar
     ff_jar_source_path = os.path.join(base_dir, "mcppatches", "fernflower-opt-fix.jar")
@@ -494,11 +493,75 @@ EXPECTED_REJECTS = {
 }
 MAX_DECOMPILE_ATTEMPTS = 10
 
+def hunk_text(hunk, eol):
+    # old and new text of a hunk; "\ No newline at end of file" drops the final newline
+    # on the side(s) of the line before it
+    old, new, old_eol, new_eol = [], [], eol, eol
+    for i, l in enumerate(hunk):
+        if l[:1] == "\\":
+            prev = hunk[i - 1][:1]
+            if prev in (" ", "-"):
+                old_eol = ""
+            if prev in (" ", "+"):
+                new_eol = ""
+        elif l[:1] in (" ", "-"):
+            old.append(l[1:])
+            if l[:1] == " ":
+                new.append(l[1:])
+        else:
+            new.append(l[1:])
+    return eol.join(old) + old_eol, eol.join(new) + new_eol
+
+def apply_source_patch(patch_file, target_dir):
+    # Apply a unified diff by content instead of line numbers: a hunk is applied when its
+    # old lines are present and skipped when its new lines already are, so applying twice
+    # is harmless. Returns the files with hunks that match neither way.
+    with open(patch_file, "r") as fh:
+        lines = fh.read().splitlines()
+    patches, i = [], 0
+    while i < len(lines):
+        if lines[i].startswith("+++ "):
+            new_file = lines[i - 1].startswith("--- /dev/null")
+            target = lines[i][4:].split("\t")[0]
+            target = target[2:] if target.startswith("b/") else target
+            hunks, i = [], i + 1
+            while i < len(lines) and not lines[i].startswith(("diff ", "--- ")):
+                if lines[i].startswith("@@"):
+                    hunks.append([])
+                elif hunks and lines[i][:1] in (" ", "-", "+", "\\"):
+                    hunks[-1].append(lines[i])
+                i += 1
+            patches.append((target, new_file, hunks))
+        else:
+            i += 1
+    failed = []
+    for target, new_file, hunks in patches:
+        path = os.path.join(target_dir, target)
+        if new_file:
+            content = hunk_text([l for h in hunks for l in h], "\n")[1]
+            if not os.path.exists(path):
+                mkdir_p(os.path.dirname(path))
+                with open(path, "w", newline="") as fh:
+                    fh.write(content)
+            continue
+        with open(path, "r", newline="") as fh:
+            text = fh.read()
+        eol = "\r\n" if "\r\n" in text else "\n"
+        for hunk in hunks:
+            old, new = hunk_text(hunk, eol)
+            if text.count(old) == 1:
+                text = text.replace(old, new)
+            elif new not in text:
+                failed.append(target)
+        with open(path, "w", newline="") as fh:
+            fh.write(text)
+    return sorted(set(failed))
+
 def normalize_decompile(src_dir):
     # fernflower also picks between equivalent forms of some methods, so builds are not
     # byte-identical to the official one (and some forms make the patches fail). Each file
     # in mcppatches/normalize is a single-hunk patch from one such form to the form the
-    # official builds were made from; it is applied when its old lines are present.
+    # official builds were made from; alternatives for the same spot simply don't match.
     # expected.sha1 lists the resulting files, to report forms nobody has seen yet.
     import hashlib
     norm_dir = os.path.join(base_dir, "mcppatches", "normalize")
@@ -506,23 +569,8 @@ def normalize_decompile(src_dir):
         return
     for path, _, files in os.walk(norm_dir):
         for f in sorted(files):
-            if not f.endswith(".patch"):
-                continue
-            with open(os.path.join(path, f), "r") as fh:
-                lines = fh.read().splitlines()
-            target = lines[0].split(None, 1)[1][2:]
-            hunk = lines[3:]
-            old = [l[1:] for l in hunk if l[:1] in (" ", "-")]
-            new = [l[1:] for l in hunk if l[:1] in (" ", "+")]
-            java_file = os.path.join(src_dir, target)
-            with open(java_file, "r", newline="") as fh:
-                text = fh.read()
-            eol = "\r\n" if "\r\n" in text else "\n"
-            old_text, new_text = eol.join(old) + eol, eol.join(new) + eol
-            if text.count(old_text) == 1:
-                with open(java_file, "w", newline="") as fh:
-                    fh.write(text.replace(old_text, new_text))
-                print("Normalized decompile: %s" % f)
+            if f.endswith(".patch"):
+                apply_source_patch(os.path.join(path, f), src_dir)
     with open(os.path.join(norm_dir, "expected.sha1"), "r") as fh:
         for line in fh:
             digest, target = line.split()
