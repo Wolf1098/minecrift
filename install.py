@@ -325,7 +325,7 @@ def download_deps( mcp_dir, download_mc, forgedep=False ):
                 shutil.copy(file64,os.path.join(flat_lib_dir, os.path.basename(file64)))                
 
                 # Use preferred architecture to choose which natives to extract.
-                if preferredarch is '32':
+                if preferredarch == '32':
                     print('    Using preferred arch 32bit')
                     extractnatives( lib, jars, file32, flat_native_dir )
                 else:
@@ -815,12 +815,12 @@ if __name__ == '__main__':
     options, _ = parser.parse_args()
 
     if not options.arch is None:
-        if options.arch is '32':
+        if options.arch == '32':
             preferredarch = '32'
-        elif options.arch is '64':
+        elif options.arch == '64':
             preferredarch = '64'
             
-    if preferredarch is '':
+    if preferredarch == '':
         preferredarch = osArch()
 
         
