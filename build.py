@@ -6,6 +6,7 @@ import subprocess, shlex
 from tempfile import mkstemp
 from shutil import move
 from os import remove, close
+import legacy40r12
 from install import download_deps, download_native, download_file, mkdir_p, replacelineinfile, _py2_set_order
 from minecriftversion import mc_version, of_file_name, of_json_name, minecrift_version_num, \
   minecrift_build, of_file_extension, of_file_md5, mcp_version, forge_version, mc_file_md5
@@ -80,6 +81,18 @@ JSON_SOURCES = ["JSONObject", "JSONArray", "JSONException", "JSONString", "JSONT
 
 def create_install(mcp_dir):
     print("Creating Installer...")
+    if os.getenv("RELEASE_VERSION"):
+        version = os.getenv("RELEASE_VERSION")
+    elif os.getenv("BUILD_NUMBER"):
+        version = "b"+os.getenv("BUILD_NUMBER")
+    else:
+        version = minecrift_build
+
+    version = minecrift_version_num+"-"+version
+    
+    artifact_id = "vivecraft-"+version
+    installer_id = artifact_id+"-installer"
+    legacy40r12.load(installer_id)
     reobf = os.path.join(mcp_dir,'reobf','minecraft')
     assets = os.path.join(base_dir,"assets")
     # VIVE - removed from inner loop. blk.class is EntityPlayerSP, not anything to do with sound?
@@ -87,6 +100,7 @@ def create_install(mcp_dir):
     #continue
     in_mem_zip = io.BytesIO()
     with zipfile.ZipFile( in_mem_zip,'w', zipfile.ZIP_DEFLATED) as zipout:
+        legacy40r12.pin_in_order(zipout)
         vanilla = os.listdir(reobf)
         for abs_path, _, filelist in os.walk(reobf, followlinks=True):
             arc_path = os.path.relpath( abs_path, reobf ).replace('\\','/').replace('.','')+'/'
@@ -104,7 +118,7 @@ def create_install(mcp_dir):
                 arcname =  arc_path + cur_file
                 #if flg:
                 #    arcname =  arc_path + cur_file.replace('.class', '.clazz')
-                zipout.write(in_file, arcname)
+                legacy40r12.write(zipout, in_file, arcname)
         print("Checking Assets...")
         for a, b, c in os.walk(assets):
             print(a)
@@ -113,20 +127,11 @@ def create_install(mcp_dir):
                 print("Adding asset %s..." % cur_file)
                 in_file= os.path.join(a,cur_file) 
                 arcname =  arc_path + cur_file
-                zipout.write(in_file, arcname)
+                legacy40r12.write(zipout, in_file, arcname)
     os.chdir( base_dir )
 
     
     in_mem_zip.seek(0)
-    if os.getenv("RELEASE_VERSION"):
-        version = os.getenv("RELEASE_VERSION")
-    elif os.getenv("BUILD_NUMBER"):
-        version = "b"+os.getenv("BUILD_NUMBER")
-    else:
-        version = minecrift_build
-
-    version = minecrift_version_num+"-"+version
-    
     # Replace version info in installer.java
     print("Updating installer versions...")
     installer_java_file = os.path.join("installer","Installer.java")
@@ -152,60 +157,46 @@ def create_install(mcp_dir):
             cwd=os.path.join(base_dir,"installer"),
             bufsize=-1).communicate()
 	
-    artifact_id = "vivecraft-"+version
-    installer_id = artifact_id+"-installer"
     installer = os.path.join( installer_id+".jar" ) 
     shutil.copy( os.path.join("installer","installer.jar"), installer )
     with zipfile.ZipFile( installer,'a', zipfile.ZIP_DEFLATED) as install_out: #append to installer.jar
     
         # Add newly compiled class files
+        class_files = []
         for dirName, subdirList, fileList in os.walk("installer"):
             for afile in fileList:
                 if os.path.isfile(os.path.join(dirName,afile)) and afile.endswith('.class'):
                     relpath = os.path.relpath(dirName, "installer")
-                    print("Adding %s..." % os.path.join(relpath,afile))
-                    install_out.write(os.path.join(dirName,afile), os.path.join(relpath,afile))
-
-        # Add the two stale classes the official 40r12 installer shipped (see the file)
-        legacy_classes = os.path.join("installer", "legacy-40r12-classes.txt")
-        if os.path.exists(legacy_classes):
-            import base64, hashlib
-            with open(legacy_classes, "r") as fh:
-                for line in fh:
-                    if line.startswith("#") or not line.strip():
-                        continue
-                    name, sha1, data = line.split()
-                    data = base64.b64decode(data)
-                    if hashlib.sha1(data).hexdigest() != sha1:
-                        raise Exception("%s: corrupt entry %s" % (legacy_classes, name))
-                    if name not in install_out.namelist():
-                        print("Adding legacy %s..." % name)
-                        install_out.writestr(name, data)
+                    class_files.append((os.path.join(dirName,afile), os.path.join(relpath,afile)))
+        for path, arcname in legacy40r12.with_stale_classes(class_files):
+            print("Adding %s..." % arcname)
+            legacy40r12.write(install_out, path, arcname)
 
         # Add json files
-        install_out.writestr("version.json", process_json("", version,minecrift_version_num,"",of_file_name ))
-        install_out.writestr("version-forge.json", process_json("-forge", version,minecrift_version_num,forge_version,of_file_name ))
-        install_out.writestr("version-shadersmod.json", process_json("-shadersmod", version,minecrift_version_num,"",of_file_name ))
-        install_out.writestr("version-forge-shadersmod.json", process_json("-forge-shadersmod", version,minecrift_version_num,forge_version,of_file_name ))        
-        install_out.writestr("version-multimc.json", process_json("-multimc", version,minecrift_version_num,"",of_file_name ))
-        install_out.writestr("version-multimc-forge.json", process_json("-multimc-forge", version,minecrift_version_num,"",of_file_name ))
+        legacy40r12.writestr(install_out, "version.json", process_json("", version,minecrift_version_num,"",of_file_name ))
+        legacy40r12.writestr(install_out, "version-forge.json", process_json("-forge", version,minecrift_version_num,forge_version,of_file_name ))
+        legacy40r12.writestr(install_out, "version-shadersmod.json", process_json("-shadersmod", version,minecrift_version_num,"",of_file_name ))
+        legacy40r12.writestr(install_out, "version-forge-shadersmod.json", process_json("-forge-shadersmod", version,minecrift_version_num,forge_version,of_file_name ))        
+        legacy40r12.writestr(install_out, "version-multimc.json", process_json("-multimc", version,minecrift_version_num,"",of_file_name ))
+        legacy40r12.writestr(install_out, "version-multimc-forge.json", process_json("-multimc-forge", version,minecrift_version_num,"",of_file_name ))
 
 
         
         # Add release notes
-        install_out.write("CHANGES.md", "release_notes.txt")
+        legacy40r12.write(install_out, "CHANGES.md", "release_notes.txt")
         
         # Add version jar - this contains all the changed files (effectively minecrift.jar). A mix
         # of obfuscated and non-obfuscated files.
-        install_out.writestr( "version.jar", in_mem_zip.read() )
+        legacy40r12.writestr(install_out, "version.jar", in_mem_zip.read())
         
         # Add the version info
-        install_out.writestr( "version", artifact_id+":"+version )
+        legacy40r12.writestr(install_out, "version", artifact_id+":"+version)
+    legacy40r12.stop()
 
     print("Creating Installer exe...")
     with open( os.path.join("installer","launch4j.xml"),"r" ) as inlaunch:
         with open( os.path.join("installer","launch4j","launch4j.xml"), "w" ) as outlaunch:
-            outlaunch.write( inlaunch.read().replace("installer",installer_id))
+            outlaunch.write( legacy40r12.launch4j_config(inlaunch.read().replace("installer",installer_id), os.path.join(base_dir,"installer","launch4j")))
     
     print("Invoking launch4j...")
     subprocess.Popen( 
@@ -216,6 +207,7 @@ def create_install(mcp_dir):
             bufsize=-1).communicate()
             
     os.unlink( os.path.join( base_dir,"installer","launch4j","launch4j.xml") )
+    legacy40r12.finish_exe(os.path.join(base_dir, installer_id+".exe"), os.path.join(base_dir, installer), os.path.join(base_dir,"installer","launch4j"))
   
 def readpomversion(pomFile):
 	if not os.path.exists(pomFile):
@@ -280,6 +272,7 @@ def main(mcp_dir):
     if not jdk11 or not jdk7:
         print('!! The installer program will not be byte-identical to official builds: they compiled'
               ' Installer.java with JDK 11 and org/json with JDK 7 (Java 6 target). !!')
+    legacy40r12.java = (cmdsplit(commands.cmdjavac), cmdsplit(commands.cmdjava))
     recompile_side( commands, CLIENT)
 
     print("Reobfuscating...")
