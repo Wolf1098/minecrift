@@ -25,6 +25,7 @@ archivesBaseName = "modid"
 
 minecraft {
     version = "1.7.10-10.13.4.1614-1.7.10"
+    mappings = "stable_12" // the MCP names Minecrift uses (its mcppatches/mappings are stable_12)
     runDir = "eclipse"
 }
 
