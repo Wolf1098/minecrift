@@ -44,6 +44,116 @@ dependencies {
 
 }
 
+// OptiFine 1.7.10_HD_U_E7, the last 1.7.10 Ultra, with its built-in shaders. It ships its
+// Minecraft classes as xdelta patches against vanilla, which its own Patcher applies; the result
+// is remapped from Mojang's names to MCP names the way Minecrift's install.py does it: OptiFine's
+// classes take the place of vanilla's, then everything is deobfuscated with notch-mcp.srg.
+def optifineVersion = "1.7.10_HD_U_E7"
+def optifineMd5 = "445062f5aaf982c36c72d90530c26850"
+def optifineJar = file("${gradle.gradleUserHomeDir}/caches/minecraft/optifine/OptiFine/${optifineVersion}/OptiFine-${optifineVersion}.jar")
+def optifineFullJar = file("${buildDir}/optifine/OptiFine-${optifineVersion}-full.jar")
+def optifineDeobfJar = file("${buildDir}/optifine/OptiFine-${optifineVersion}-deobf.jar")
+def fetch = { String url -> def c = new URL(url).openConnection(); c.setRequestProperty("User-Agent", "Mozilla/5.0"); c.inputStream.withStream { it.bytes } }
+def md5 = { File f -> f.exists() ? java.security.MessageDigest.getInstance("MD5").digest(f.bytes).encodeHex().toString() : null }
+
+task downloadOptifine {
+    outputs.file optifineJar
+    onlyIf { md5(optifineJar) != optifineMd5 }
+    doLast {
+        // optifine.net serves each jar through a page holding a one-time download link, and
+        // refuses Java's default User-Agent
+        def page = new String(fetch("https://optifine.net/adloadx?f=OptiFine_${optifineVersion}.jar"), "UTF-8")
+        def link = (page =~ /downloadx\?f=[^"']+/)[0].replace("&amp;", "&")
+        optifineJar.parentFile.mkdirs()
+        optifineJar.bytes = fetch("https://optifine.net/" + link)
+        if (md5(optifineJar) != optifineMd5)
+            throw new GradleException("OptiFine ${optifineVersion} does not match its MD5 ${optifineMd5}")
+    }
+}
+
+task patchOptifine(dependsOn: [downloadOptifine, "downloadClient"]) {
+    inputs.file optifineJar
+    outputs.file optifineFullJar
+    doLast {
+        def vanilla = file("${gradle.gradleUserHomeDir}/caches/minecraft/net/minecraft/minecraft/${minecraft.version}/minecraft-${minecraft.version}.jar")
+        optifineFullJar.parentFile.mkdirs()
+        javaexec {
+            classpath = files(optifineJar)
+            mainClass = "optifine.Patcher"
+            args vanilla.path, optifineJar.path, optifineFullJar.path
+        }
+    }
+}
+
+task deobfOptifine(dependsOn: [patchOptifine, "genSrgs"]) {
+    inputs.file optifineFullJar
+    outputs.file optifineDeobfJar
+    doLast {
+        def cache = "${gradle.gradleUserHomeDir}/caches/minecraft"
+        def forge = "${cache}/net/minecraftforge/forge/${minecraft.apiVersion}"
+        def mapping = new net.md_5.specialsource.JarMapping()
+        mapping.loadMappings(genSrgs.notchToMcp)
+        // FML applies Forge's access transformers to OptiFine's classes in a real install; the
+        // workspace needs them applied here (they use SRG names, so translate them to MCP names)
+        def mcpNames = [:]
+        genSrgs.srgToMcp.eachLine { line ->
+            def p = line.split(" ")
+            if (p[0] == "FD:" || p[0] == "MD:")
+                mcpNames[p[1].tokenize("/")[-1]] = p[p[0] == "FD:" ? 2 : 3].tokenize("/")[-1]
+        }
+        def access = new net.md_5.specialsource.AccessMap()
+        ["fml_at.cfg", "forge_at.cfg"].each { at ->
+            // SpecialSource wants "access class.member"; FML's files say "access class member"
+            def text = file("${forge}/unpacked/src/main/resources/${at}").readLines().collect { line ->
+                line.split("#")[0].trim().replaceAll(/(?:func|field)_\d+_[a-zA-Z]+/) { mcpNames[it] ?: it }.replaceFirst(/^(\S+\s+\S+)\s+/, '$1.')
+            }.join("\n")
+            access.loadAccessTransformer(new BufferedReader(new StringReader(text)))
+        }
+        def vanilla = file("${cache}/net/minecraft/minecraft/${minecraft.version}/minecraft-${minecraft.version}.jar")
+        def inheritance = new net.md_5.specialsource.provider.JointProvider()
+        inheritance.add(new net.md_5.specialsource.provider.JarProvider(net.md_5.specialsource.Jar.init([optifineFullJar, vanilla])))
+        mapping.setFallbackInheritanceProvider(inheritance)
+        optifineDeobfJar.parentFile.mkdirs()
+        new net.md_5.specialsource.JarRemapper(null, mapping, new net.md_5.specialsource.RemapperProcessor(null, null, access)).remapJar(net.md_5.specialsource.Jar.init(optifineFullJar), optifineDeobfJar)
+        // MCP renames SRG names everywhere in the source, string literals included, and OptiFine
+        // looks a few Forge members up by SRG name (BlockUtils, EntityUtils, ResourceUtils), so
+        // rename those strings too, or its fallbacks fail in the workspace
+        def srgName = ~/(?:func|field)_\d+_[a-zA-Z]+/
+        def rename = { it instanceof String ? it.replaceAll(srgName) { mcpNames[it] ?: it } : it }
+        def entries = []
+        new java.util.zip.ZipFile(optifineDeobfJar).withCloseable { zip ->
+            zip.entries().each { e -> entries << [e.name, zip.getInputStream(e).bytes] }
+        }
+        new java.util.zip.ZipOutputStream(new FileOutputStream(optifineDeobfJar)).withCloseable { out ->
+            entries.each { name, bytes ->
+                if (name.endsWith(".class") && new String(bytes, "ISO-8859-1") =~ srgName) {
+                    def writer = new org.objectweb.asm.ClassWriter(0)
+                    new org.objectweb.asm.ClassReader(bytes).accept(new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM5, writer) {
+                        org.objectweb.asm.MethodVisitor visitMethod(int acc, String n, String desc, String sig, String[] exc) {
+                            new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM5, super.visitMethod(acc, n, desc, sig, exc)) {
+                                void visitLdcInsn(Object value) { super.visitLdcInsn(rename(value)) }
+                            }
+                        }
+                    }, 0)
+                    bytes = writer.toByteArray()
+                }
+                out.putNextEntry(new java.util.zip.ZipEntry(name))
+                out.write(bytes)
+                out.closeEntry()
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation files(optifineDeobfJar).builtBy(deobfOptifine)
+}
+
+// OptiFine's classes must come before Forge's copies of the same Minecraft classes, as its
+// Forge tweaker makes them in a real install
+compileJava.doFirst { classpath = files(optifineDeobfJar) + classpath }
+runClient.doFirst { classpath = files(optifineDeobfJar) + classpath }
+
 processResources
 {
     // this will ensure that this task is redone when the versions change.
