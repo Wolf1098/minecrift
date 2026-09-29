@@ -165,7 +165,23 @@ def create_install(mcp_dir):
                     relpath = os.path.relpath(dirName, "installer")
                     print("Adding %s..." % os.path.join(relpath,afile))
                     install_out.write(os.path.join(dirName,afile), os.path.join(relpath,afile))
-            
+
+        # Add the two stale classes the official 40r12 installer shipped (see the file)
+        legacy_classes = os.path.join("installer", "legacy-40r12-classes.txt")
+        if os.path.exists(legacy_classes):
+            import base64, hashlib
+            with open(legacy_classes, "r") as fh:
+                for line in fh:
+                    if line.startswith("#") or not line.strip():
+                        continue
+                    name, sha1, data = line.split()
+                    data = base64.b64decode(data)
+                    if hashlib.sha1(data).hexdigest() != sha1:
+                        raise Exception("%s: corrupt entry %s" % (legacy_classes, name))
+                    if name not in install_out.namelist():
+                        print("Adding legacy %s..." % name)
+                        install_out.writestr(name, data)
+
         # Add json files
         install_out.writestr("version.json", process_json("", version,minecrift_version_num,"",of_file_name ))
         install_out.writestr("version-forge.json", process_json("-forge", version,minecrift_version_num,forge_version,of_file_name ))
